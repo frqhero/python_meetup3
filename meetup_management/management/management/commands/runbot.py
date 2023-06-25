@@ -3,7 +3,7 @@ import os
 from django.core.management.base import BaseCommand
 from environs import Env
 from telegram import InlineKeyboardMarkup, InlineKeyboardButton
-from telegram.ext import Updater, ConversationHandler, CommandHandler, CallbackQueryHandler
+from telegram.ext import Updater, ConversationHandler, CommandHandler, CallbackQueryHandler, MessageHandler, Filters
 import django
 
 
@@ -27,15 +27,9 @@ def start(update, context):
     ]
     inline_keyboard = InlineKeyboardMarkup(inline_keyboard_buttons)
 
-    # context.bot.send_message(
-    #     chat_id=update.effective_chat.id,
-    #     text="Выберете мероприятие!",
-    #     reply_markup=inline_keyboard,
-    # )
-
     update.message.reply_text(
-        "Hi! My name is Doctor Botter. I will hold a more complex conversation with you. "
-        "Why don't you tell me something about yourself?",
+        "Добро пожаловать! Данный сервис позволит Вам управлять митапами. "
+        "Выберите интересующий Вас митап!",
         reply_markup=inline_keyboard,
     )
 
@@ -44,25 +38,55 @@ def start(update, context):
 
 def meetup_handler(update, context):
     meetup = Meetup.objects.get(id=update.callback_query.data)
-    context.bot.send_message(
-        chat_id=update.effective_chat.id,
-        text=meetup.description
+    update.callback_query.message.reply_text(meetup.description)
+    role_buttons = [
+        InlineKeyboardButton(text='Организатор', callback_data='Организатор'),
+        InlineKeyboardButton(text='Докладчик', callback_data='Speaker'),
+        InlineKeyboardButton(text='Пользователь', callback_data='Пользователь')
+    ]
+    keyboard = InlineKeyboardMarkup([role_buttons])
+    update.callback_query.message.reply_text(
+        'Выберите роль для использования сервиса!',
+        reply_markup=keyboard,
     )
 
     return 'ROLES'
 
 
-def roles_handler(update, context):
-    text = 'Выберете желаемую роль'
+def get_speaker_options(update, context):
     role_buttons = [
-        InlineKeyboardButton(text='Организатор', callback_data='Организатор'),
-        InlineKeyboardButton(text='Докладчик', callback_data='Докладчик'),
-        InlineKeyboardButton(text='Пользователь', callback_data='Пользователь')
+        [InlineKeyboardButton(text='Показать заданные вопросы', callback_data='questions')],
+        [InlineKeyboardButton(text='Подать заявку на доклад', callback_data='apply')],
+        [InlineKeyboardButton(text='Начать доклад', callback_data='start_report')]
     ]
     keyboard = InlineKeyboardMarkup(role_buttons)
-    update.message.reply_text('asf')
+    update.callback_query.message.reply_text(
+        'Данные режим предназначен для использования функций докладчика. '
+        'Здесь подают заявку на выступление, отмечают начало и конец доклада'
+        ', смотрят вопросы заданные аудиторией.',
+        reply_markup=keyboard,
+    )
 
-    return 'ROLES'
+    return 'SPEAKER_OPTIONS'
+
+
+def speaker_apply(update, context):
+    text = 'Укажите пожалуйста тему вашего доклада'
+    update.callback_query.message.reply_text(text)
+
+    return 'HANDLE_TOPIC'
+
+
+def handle_topic(update, context):
+    text = 'Ща чекним что за тему вы указали'
+    update.message.reply_text(text)
+
+
+def handle_speaker_scenario_choice(update, context):
+    update.callback_query.message.reply_text(
+        'handle_speaker_scenario_choice',
+    )
+
 
 
 def stop(update, context) -> int:
@@ -77,11 +101,31 @@ class Command(BaseCommand):
         updater = get_updater()
         dispatcher = updater.dispatcher
 
+        speaker_apply_conv = ConversationHandler(
+            entry_points=[CallbackQueryHandler(speaker_apply, pattern='^apply$')],
+            states={
+                'HANDLE_TOPIC': [MessageHandler(Filters.text, handle_topic)]
+            },
+            fallbacks = [CommandHandler('stop', stop)]
+        )
+
+        speaker_conv = ConversationHandler(
+            entry_points=[CallbackQueryHandler(get_speaker_options, pattern='^Speaker$')],
+            states={
+                'SPEAKER_OPTIONS': [
+                    speaker_apply_conv,
+                    # CallbackQueryHandler(handle_speaker_scenario_choice, pattern='')
+                ],
+            },
+            fallbacks=[CommandHandler('stop', stop)]
+        )
+
         conv_handler = ConversationHandler(
             entry_points=[CommandHandler('start', start)],
             states={
                 'MEETUP': [CallbackQueryHandler(meetup_handler)],
-                'ROLES': [CallbackQueryHandler(roles_handler)],
+                'ROLES': [speaker_conv],
+                # 'SPEAKER': [speaker_conv],
             },
             fallbacks=[CommandHandler('stop', stop)]
         )
