@@ -178,6 +178,8 @@ def summarize_application(update, context):
     update.callback_query.message.reply_text(f'Длительность доклада {context.user_data["duration"]}')
     update.callback_query.message.reply_text(f'Временной промежуток {context.user_data["timeslot"]}')
 
+    return 'END'
+
 
 def handle_speaker_scenario_choice(update, context):
     update.callback_query.message.reply_text(
